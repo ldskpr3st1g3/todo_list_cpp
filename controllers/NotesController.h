@@ -1,0 +1,35 @@
+#pragma once
+
+#include <drogon/HttpController.h>
+#include <drogon/HttpRequest.h>
+#include <drogon/HttpResponse.h>
+#include <drogon/HttpTypes.h>
+#include <drogon/drogon.h>
+
+class NoteController : public drogon::HttpController<NoteController> {
+  std::unordered_map<int, Json::Value> todo_list;
+  int id_counter{};
+  std::mutex mtx;
+
+public:
+  METHOD_LIST_BEGIN
+  ADD_METHOD_TO(NoteController::createNewNote, "/api/v1/tasks", drogon::Post, "AuthFilter");
+  ADD_METHOD_TO(NoteController::getNoteById, "/api/v1/tasks/{id}", drogon::Get, "AuthFilter",
+                "AccessFilter");
+  ADD_METHOD_TO(NoteController::deleteNoteById, "/api/v1/tasks/{id}", drogon::Delete, "AuthFilter",
+                "AccessFilter");
+  ADD_METHOD_TO(NoteController::editNoteById, "/api/v1/tasks/{id}", drogon::Patch, "AuthFilter",
+                "AccessFilter");
+  ADD_METHOD_TO(NoteController::getAllHeadsOfNotes, "/api/v1/tasks", drogon::Get, "AuthFilter");
+  METHOD_LIST_END
+
+  auto createNewNote(const drogon::HttpRequestPtr request) -> drogon::Task<drogon::HttpResponsePtr>;
+  auto editNoteById(const drogon::HttpRequestPtr request, int32_t note_id)
+      -> drogon::Task<drogon::HttpResponsePtr>;
+  auto deleteNoteById(const drogon::HttpRequestPtr request, int32_t note_id)
+      -> drogon::Task<drogon::HttpResponsePtr>;
+  auto getNoteById(const drogon::HttpRequestPtr request, int32_t note_id)
+      -> drogon::Task<drogon::HttpResponsePtr>;
+  auto getAllHeadsOfNotes(const drogon::HttpRequestPtr request)
+      -> drogon::Task<drogon::HttpResponsePtr>;
+};
