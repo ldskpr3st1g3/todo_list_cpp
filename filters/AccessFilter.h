@@ -1,6 +1,5 @@
 
 #pragma once
-
 #include "filters/MainFilter.h"
 #include <drogon/HttpFilter.h>
 #include <optional>

@@ -1,8 +1,10 @@
 #include "AccessFilter.h"
 #include "ResponseBuilder.h"
+#include "UsersNotes.h"
 #include <drogon/HttpTypes.h>
 #include <drogon/drogon.h>
 #include <drogon/utils/coroutine.h>
+#include <string>
 
 auto AccessFilter::myFilter(const drogon::HttpRequestPtr& request)
     -> drogon::Task<std::optional<drogon::HttpResponsePtr>> {
@@ -23,11 +25,19 @@ auto AccessFilter::myFilter(const drogon::HttpRequestPtr& request)
 
   try {
     auto db = drogon::app().getDbClient();
-    auto access = co_await db->execSqlCoro(
-        "select * from users_notes where note_id = $1 and user_id = $2", note_id, user_id);
-    if (access.empty())
+    drogon::orm::CoroMapper<drogon_model::notes_db::UsersNotes> un_mapper(db);
+    auto conjuction = co_await un_mapper.findBy(
+        drogon::orm::Criteria(drogon_model::notes_db::UsersNotes::Cols::_note_id,
+                              drogon::orm::CompareOperator::EQ, note_id) &&
+        drogon::orm::Criteria(drogon_model::notes_db::UsersNotes::Cols::_user_id,
+                              drogon::orm::CompareOperator::EQ, user_id));
+    if (conjuction.empty())
       co_return ResponseBuilder::createError("Access denied",
                                              drogon::HttpStatusCode::k403Forbidden);
+
+    auto role = *conjuction[0].getRole();
+    request->attributes()->insert("role", role);
+
     co_return std::nullopt;
   } catch (const drogon::orm::DrogonDbException& error) {
     LOG_ERROR << "DATABASE ERROR: " << error.base().what();

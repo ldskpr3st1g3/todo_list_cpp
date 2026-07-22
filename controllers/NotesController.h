@@ -21,6 +21,8 @@ public:
   ADD_METHOD_TO(NoteController::editNoteById, "/api/v1/tasks/{id}", drogon::Patch, "AuthFilter",
                 "AccessFilter");
   ADD_METHOD_TO(NoteController::getAllHeadsOfNotes, "/api/v1/tasks", drogon::Get, "AuthFilter");
+  ADD_METHOD_TO(NoteController::addRoleByUserId, "/api/v1/tasks/roles/{id}", drogon::Post,
+                "AuthFilter", "AccessFilter");
   METHOD_LIST_END
 
   auto createNewNote(const drogon::HttpRequestPtr request) -> drogon::Task<drogon::HttpResponsePtr>;
@@ -31,5 +33,8 @@ public:
   auto getNoteById(const drogon::HttpRequestPtr request, int32_t note_id)
       -> drogon::Task<drogon::HttpResponsePtr>;
   auto getAllHeadsOfNotes(const drogon::HttpRequestPtr request)
+      -> drogon::Task<drogon::HttpResponsePtr>;
+
+  auto addRoleByUserId(const drogon::HttpRequestPtr request, int32_t note_id)
       -> drogon::Task<drogon::HttpResponsePtr>;
 };

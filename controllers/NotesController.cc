@@ -2,6 +2,7 @@
 #include "JsonValidate.h"
 #include "RefreshTokens.h"
 #include "ResponseBuilder.h"
+#include "Users.h"
 #include "UsersNotes.h"
 #include "models/Notes.h"
 #include <cstdint>
@@ -12,7 +13,10 @@
 #include <drogon/orm/Criteria.h>
 #include <drogon/orm/Exception.h>
 #include <json/value.h>
-#include <pthread.h>
+
+bool RoleChecker(std::string&& role, std::initializer_list<std::string> roles) {
+  return std::find(std::begin(roles), std::end(roles), role) < std::end(roles);
+}
 
 auto NoteController::createNewNote(const drogon::HttpRequestPtr request)
     -> drogon::Task<drogon::HttpResponsePtr> {
@@ -21,7 +25,6 @@ auto NoteController::createNewNote(const drogon::HttpRequestPtr request)
       !JsonValidation::myValidate(*json_ptr,
                                   {
                                       "title",
-                                      "content",
                                   }) ||
       (*json_ptr)["title"].asString().empty())
     co_return ResponseBuilder::createError("Invalid JSON or no JSON provided");
@@ -39,7 +42,6 @@ auto NoteController::createNewNote(const drogon::HttpRequestPtr request)
     drogon_model::notes_db::UsersNotes new_conjuction;
     new_conjuction.setNoteId(*current_note.getId());
     new_conjuction.setUserId(user_id);
-    new_conjuction.setRole("owner");
     drogon::orm::CoroMapper<drogon_model::notes_db::UsersNotes> conjMapper(trans);
     co_await conjMapper.insert(std::move(new_conjuction));
     co_return ResponseBuilder::createSuccess("Note created", drogon::HttpStatusCode::k201Created,
@@ -82,11 +84,25 @@ auto NoteController::getNoteById(const drogon::HttpRequestPtr request, int32_t n
     -> drogon::Task<drogon::HttpResponsePtr> {
   int32_t user_id = request->attributes()->get<int32_t>("sub");
   auto db = drogon::app().getDbClient();
-  drogon::orm::CoroMapper<drogon_model::notes_db::Notes> noteMapper(db);
   try {
-    auto needed_note = co_await noteMapper.findByPrimaryKey(note_id);
-    co_return ResponseBuilder::createSuccess("Note details", drogon::HttpStatusCode::k200OK,
-                                             needed_note.toJson());
+    auto needed_note =
+        co_await db->execSqlCoro("select n.* , un.role from notes n "
+                                 "join users_notes un on un.note_id = n.id and un.user_id = $1 "
+                                 "where n.id = $2",
+                                 user_id, note_id);
+    if (needed_note.empty())
+      co_return ResponseBuilder::createError("something went wrong",
+                                             drogon::HttpStatusCode::k500InternalServerError);
+    auto row = needed_note[0];
+    Json::Value json;
+    json["id"] = row["id"].as<int32_t>();
+    json["title"] = row["title"].as<std::string>();
+    json["content"] = row["content"].as<std::string>();
+    json["created_at"] = row["created_at"].as<std::string>();
+    json["updated_at"] = row["updated_at"].as<std::string>();
+    json["role"] = row["role"].as<std::string>();
+    co_return ResponseBuilder::createSuccess("Note details", drogon::HttpStatusCode::k200OK, json);
+
   } catch (const drogon::orm::DrogonDbException& error) {
     LOG_ERROR << "DATABASE ERROR: " << error.base().what();
     co_return ResponseBuilder::createError("Database error",
@@ -96,6 +112,10 @@ auto NoteController::getNoteById(const drogon::HttpRequestPtr request, int32_t n
 
 auto NoteController::deleteNoteById(const drogon::HttpRequestPtr request, int32_t note_id)
     -> drogon::Task<drogon::HttpResponsePtr> {
+
+  auto user_role = request->attributes()->get<std::string>("role");
+  if (!RoleChecker(std::move(user_role), {"owner"}))
+    co_return ResponseBuilder::createError("Access denied", drogon::HttpStatusCode::k403Forbidden);
   auto db = drogon::app().getDbClient();
   drogon::orm::CoroMapper<drogon_model::notes_db::Notes> note_mapper(db);
   try {
@@ -113,28 +133,17 @@ auto NoteController::deleteNoteById(const drogon::HttpRequestPtr request, int32_
 
 auto NoteController::editNoteById(const drogon::HttpRequestPtr request, int32_t note_id)
     -> drogon::Task<drogon::HttpResponsePtr> {
+  auto user_role = request->attributes()->get<std::string>("role");
+  if (!RoleChecker(std::move(user_role), {"editor", "owner"}))
+    co_return ResponseBuilder::createError("Access denied", drogon::HttpStatusCode::k403Forbidden);
   auto json_ptr = request->getJsonObject();
-  if (!json_ptr || !JsonValidation::myValidate(*json_ptr, {"title"}) ||
-      (*json_ptr)["title"].asString().empty())
+  if (!json_ptr || !JsonValidation::myValidate(*json_ptr, {"title"}))
     co_return ResponseBuilder::createError("Invalid JSON or no JSON provided");
   auto db = drogon::app().getDbClient();
   drogon::orm::CoroMapper<drogon_model::notes_db::Notes> mapper(db);
   try {
     auto user_id = request->attributes()->get<int32_t>("sub");
-    drogon::orm::CoroMapper<drogon_model::notes_db::UsersNotes> un_mapper(db);
-    auto criteria = drogon::orm::Criteria(drogon_model::notes_db::UsersNotes::Cols::_note_id,
-                                          drogon::orm::CompareOperator::EQ, note_id) &&
-                    drogon::orm::Criteria(drogon_model::notes_db::UsersNotes::Cols::_user_id,
-                                          drogon::orm::CompareOperator::EQ, user_id);
-    auto current_conjuction = co_await un_mapper.findBy(criteria);
-    if (current_conjuction.empty())
-      co_return ResponseBuilder::createError("Note not found",
-                                             drogon::HttpStatusCode::k404NotFound);
-    auto role = *std::move(current_conjuction).front().getRole();
-    if (role != "editor" && role != "owner") {
-      co_return ResponseBuilder::createError("Access denied",
-                                             drogon::HttpStatusCode::k403Forbidden);
-    }
+
     auto note = co_await mapper.findByPrimaryKey(note_id);
     note.updateByMasqueradedJson(*json_ptr, {"", "title", "content", "", ""});
 
@@ -149,6 +158,57 @@ auto NoteController::editNoteById(const drogon::HttpRequestPtr request, int32_t 
   } catch (const drogon::orm::DrogonDbException& exp) {
     LOG_ERROR << "DATABASE ERROR" << exp.base().what() << '\n';
     co_return ResponseBuilder::createError("Database Error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
+}
+
+auto NoteController::addRoleByUserId(const drogon::HttpRequestPtr request, int32_t note_id)
+    -> drogon::Task<drogon::HttpResponsePtr> {
+  auto user_role = request->attributes()->get<std::string>("role");
+  if (!RoleChecker(std::move(user_role), {"owner"}))
+    co_return ResponseBuilder::createError("Access denied", drogon::HttpStatusCode::k403Forbidden);
+
+  auto json_ptr = request->getJsonObject();
+  if (!json_ptr || !JsonValidation::myValidate(*json_ptr, {"login", "role"}))
+    co_return ResponseBuilder::createError("Invalid Json or no Json provided");
+  auto db = drogon::app().getDbClient();
+  drogon::orm::CoroMapper<drogon_model::notes_db::UsersNotes> un_mapper(db);
+  drogon::orm::CoroMapper<drogon_model::notes_db::Users> u_mapper(db);
+  auto new_role = (*json_ptr)["role"].asString();
+  try {
+
+    auto user = co_await u_mapper.findBy(
+        drogon::orm::Criteria(drogon_model::notes_db::Users::Cols::_login,
+                              drogon::orm::CompareOperator::EQ, (*json_ptr)["login"].asString()));
+    if (user.empty())
+      co_return ResponseBuilder::createError("User not found",
+                                             drogon::HttpStatusCode::k404NotFound);
+    auto user_id = *user.front().getId();
+
+    auto conjuction = co_await un_mapper.findBy(
+        drogon::orm::Criteria(drogon_model::notes_db::UsersNotes::Cols::_note_id,
+                              drogon::orm::CompareOperator::EQ, note_id) &&
+        drogon::orm::Criteria(drogon_model::notes_db::UsersNotes::Cols::_user_id,
+                              drogon::orm::CompareOperator::EQ, user_id));
+    if (conjuction.empty()) {
+      drogon_model::notes_db::UsersNotes new_conjuction;
+      new_conjuction.setRole(std::move(new_role));
+      new_conjuction.setNoteId(note_id);
+      new_conjuction.setUserId(user_id);
+      auto db_conjuction = co_await un_mapper.insert(std::move(new_conjuction));
+      co_return ResponseBuilder::createSuccess("Role added", drogon::HttpStatusCode::k201Created,
+                                               db_conjuction.toJson());
+    } else {
+      auto actual_conjuction = conjuction.front();
+      actual_conjuction.setRole(std::move(new_role));
+      actual_conjuction.setGrantedAt(trantor::Date::now());
+      auto db_conjuction = co_await un_mapper.update(actual_conjuction);
+      co_return ResponseBuilder::createSuccess("Role added", drogon::HttpStatusCode::k201Created,
+                                               actual_conjuction.toJson());
+    }
+  } catch (drogon::orm::DrogonDbException& error) {
+    LOG_ERROR << "DATABASE ERROR: " << error.base().what();
+    co_return ResponseBuilder::createError("Database error",
                                            drogon::HttpStatusCode::k500InternalServerError);
   }
 }
