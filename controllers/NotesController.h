@@ -7,9 +7,6 @@
 #include <drogon/drogon.h>
 
 class NoteController : public drogon::HttpController<NoteController> {
-  std::unordered_map<int, Json::Value> todo_list;
-  int id_counter{};
-  std::mutex mtx;
 
 public:
   METHOD_LIST_BEGIN
