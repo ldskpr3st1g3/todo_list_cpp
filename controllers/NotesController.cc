@@ -202,7 +202,7 @@ auto NoteController::addRoleByUserId(const drogon::HttpRequestPtr request, int32
       auto actual_conjuction = conjuction.front();
       actual_conjuction.setRole(std::move(new_role));
       actual_conjuction.setGrantedAt(trantor::Date::now());
-      auto db_conjuction = co_await un_mapper.update(actual_conjuction);
+      co_await un_mapper.update(actual_conjuction);
       co_return ResponseBuilder::createSuccess("Role added", drogon::HttpStatusCode::k201Created,
                                                actual_conjuction.toJson());
     }
