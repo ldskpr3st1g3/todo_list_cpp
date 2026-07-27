@@ -51,6 +51,8 @@ class Users
         static const std::string _created_at;
         static const std::string _updated_at;
         static const std::string _login;
+        static const std::string _phone;
+        static const std::string _age;
     };
 
     static const int primaryKeyNumber;
@@ -165,8 +167,27 @@ class Users
     void setLogin(const std::string &pLogin) noexcept;
     void setLogin(std::string &&pLogin) noexcept;
 
+    /**  For column phone  */
+    ///Get the value of the column phone, returns the default value if the column is null
+    const std::string &getValueOfPhone() const noexcept;
+    ///Return a shared_ptr object pointing to the column const value, or an empty shared_ptr object if the column is null
+    const std::shared_ptr<std::string> &getPhone() const noexcept;
+    ///Set the value of the column phone
+    void setPhone(const std::string &pPhone) noexcept;
+    void setPhone(std::string &&pPhone) noexcept;
+    void setPhoneToNull() noexcept;
 
-    static size_t getColumnNumber() noexcept {  return 7;  }
+    /**  For column age  */
+    ///Get the value of the column age, returns the default value if the column is null
+    const int32_t &getValueOfAge() const noexcept;
+    ///Return a shared_ptr object pointing to the column const value, or an empty shared_ptr object if the column is null
+    const std::shared_ptr<int32_t> &getAge() const noexcept;
+    ///Set the value of the column age
+    void setAge(const int32_t &pAge) noexcept;
+    void setAgeToNull() noexcept;
+
+
+    static size_t getColumnNumber() noexcept {  return 9;  }
     static const std::string &getColumnName(size_t index) noexcept(false);
 
     Json::Value toJson() const;
@@ -195,6 +216,8 @@ class Users
     std::shared_ptr<::trantor::Date> createdAt_;
     std::shared_ptr<::trantor::Date> updatedAt_;
     std::shared_ptr<std::string> login_;
+    std::shared_ptr<std::string> phone_;
+    std::shared_ptr<int32_t> age_;
     struct MetaData
     {
         const std::string colName_;
@@ -206,7 +229,7 @@ class Users
         const bool notNull_;
     };
     static const std::vector<MetaData> metaData_;
-    bool dirtyFlag_[7]={ false };
+    bool dirtyFlag_[9]={ false };
   public:
     static const std::string &sqlForFindingByPrimaryKey()
     {
@@ -257,6 +280,16 @@ class Users
             sql += "login,";
             ++parametersCount;
         }
+        if(dirtyFlag_[7])
+        {
+            sql += "phone,";
+            ++parametersCount;
+        }
+        if(dirtyFlag_[8])
+        {
+            sql += "age,";
+            ++parametersCount;
+        }
         needSelection=true;
         if(parametersCount > 0)
         {
@@ -300,6 +333,16 @@ class Users
             sql.append(placeholderStr, n);
         }
         if(dirtyFlag_[6])
+        {
+            n = snprintf(placeholderStr,sizeof(placeholderStr),"$%d,",placeholder++);
+            sql.append(placeholderStr, n);
+        }
+        if(dirtyFlag_[7])
+        {
+            n = snprintf(placeholderStr,sizeof(placeholderStr),"$%d,",placeholder++);
+            sql.append(placeholderStr, n);
+        }
+        if(dirtyFlag_[8])
         {
             n = snprintf(placeholderStr,sizeof(placeholderStr),"$%d,",placeholder++);
             sql.append(placeholderStr, n);

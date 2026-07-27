@@ -199,10 +199,11 @@ class UsersNotes
             sql += "note_id,";
             ++parametersCount;
         }
-        if(dirtyFlag_[2])
+        sql += "role,";
+        ++parametersCount;
+        if(!dirtyFlag_[2])
         {
-            sql += "role,";
-            ++parametersCount;
+            needSelection=true;
         }
         sql += "granted_at,";
         ++parametersCount;
@@ -235,6 +236,10 @@ class UsersNotes
         {
             n = snprintf(placeholderStr,sizeof(placeholderStr),"$%d,",placeholder++);
             sql.append(placeholderStr, n);
+        }
+        else
+        {
+            sql +="default,";
         }
         if(dirtyFlag_[3])
         {

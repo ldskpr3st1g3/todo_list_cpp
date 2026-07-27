@@ -717,11 +717,6 @@ bool UsersNotes::validateJsonForCreation(const Json::Value &pJson, std::string &
         if(!validJsonOfField(2, "role", pJson["role"], err, true))
             return false;
     }
-    else
-    {
-        err="The role column cannot be null";
-        return false;
-    }
     if(pJson.isMember("granted_at"))
     {
         if(!validJsonOfField(3, "granted_at", pJson["granted_at"], err, true))
@@ -772,11 +767,6 @@ bool UsersNotes::validateMasqueradedJsonForCreation(const Json::Value &pJson,
               if(!validJsonOfField(2, pMasqueradingVector[2], pJson[pMasqueradingVector[2]], err, true))
                   return false;
           }
-        else
-        {
-            err="The " + pMasqueradingVector[2] + " column cannot be null";
-            return false;
-        }
       }
       if(!pMasqueradingVector[3].empty())
       {

@@ -17,7 +17,6 @@
 #include <jwt-cpp/jwt.h>
 #include <trantor/net/EventLoop.h>
 #include <trantor/utils/Date.h>
-#include <trantor/utils/Logger.h>
 
 CpuThreadPool& getGlobalPool() {
   static CpuThreadPool pool(2);
@@ -224,6 +223,90 @@ auto UserController::Me(const drogon::HttpRequestPtr request)
     co_return ResponseBuilder::createSuccess("Current user", drogon::HttpStatusCode::k200OK,
                                              std::move(current_user).toJson());
   } catch (drogon::orm::DrogonDbException& error) {
+    LOG_ERROR << "DATABASE ERROR: " << error.base().what();
+    co_return ResponseBuilder::createError("Database error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
+}
+
+auto UserController::editPublicData(const drogon::HttpRequestPtr request)
+    -> drogon ::Task<drogon::HttpResponsePtr> {
+  auto user_id = request->attributes()->get<int32_t>("sub");
+  auto json_ptr = request->getJsonObject();
+  if (!json_ptr)
+    co_return ResponseBuilder::createError("Invalid Json or no Json provided");
+  auto db = drogon::app().getDbClient();
+  drogon_model::notes_db::Users user;
+  drogon::orm::CoroMapper<drogon_model::notes_db::Users> u_mapper(db);
+  try {
+    auto user = co_await u_mapper.findByPrimaryKey(user_id);
+    if (json_ptr->isMember("username"))
+      user.setUsername((*json_ptr)["username"].asString());
+    if (json_ptr->isMember("age") && (*json_ptr)["age"].isInt())
+      user.setAge((*json_ptr)["age"].asInt());
+    else
+      co_return ResponseBuilder::createError("Invalid Json, age must be an integer",
+                                             drogon::HttpStatusCode::k400BadRequest);
+    user.setUpdatedAt(trantor::Date::now());
+    co_await u_mapper.update(user);
+    co_return ResponseBuilder::createSuccess("user edited", drogon::HttpStatusCode::k201Created,
+                                             std::move(user).toJson());
+  } catch (const drogon::orm::DrogonDbException& error) {
+    LOG_ERROR << "DATABASE ERROR: " << error.base().what();
+    co_return ResponseBuilder::createError("Database error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
+}
+
+auto UserController::editPrivateData(const drogon::HttpRequestPtr request)
+    -> drogon::Task<drogon::HttpResponsePtr> {
+  auto user_id = request->attributes()->get<int32_t>("sub");
+  auto json_ptr = request->getJsonObject();
+  if (!json_ptr)
+    co_return ResponseBuilder::createError("Invalid Json or no Json provided",
+                                           drogon::HttpStatusCode::k400BadRequest);
+  auto db = drogon::app().getDbClient();
+  if (!db) {
+    LOG_ERROR << "DATABASE CONNECTION ERROR";
+    co_return ResponseBuilder::createError("Database connection error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
+  drogon::orm::CoroMapper<drogon_model::notes_db::Users> u_mapper(db);
+  try {
+    auto current_user = co_await u_mapper.findByPrimaryKey(user_id);
+    if (json_ptr->isMember("email") || !(*json_ptr)["email"].asString().empty())
+      current_user.setEmail((*json_ptr)["email"].asString());
+    if (json_ptr->isMember("login") || !(*json_ptr)["login"].asString().empty())
+      current_user.setLogin((*json_ptr)["login"].asString());
+    if (json_ptr->isMember("phone") || !(*json_ptr)["phone"].asString().empty())
+      current_user.setPhone((*json_ptr)["phone"].asString());
+
+    co_await u_mapper.update(current_user);
+    co_return ResponseBuilder::createSuccess("email changed", drogon::HttpStatusCode::k201Created,
+                                             current_user.toJson());
+  } catch (drogon::orm::DrogonDbException& error) {
+    LOG_ERROR << "DATABASE ERROR: " << error.base().what();
+    co_return ResponseBuilder::createError("Database error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
+}
+
+auto UserController::signOutFromAllDevices(const drogon::HttpRequestPtr request)
+    -> drogon::Task<drogon::HttpResponsePtr> {
+  auto db = drogon::app().getDbClient();
+  if (!db) {
+    LOG_ERROR << "DATABASE CONNECTION ERROR";
+    co_return ResponseBuilder::createError("Database connection error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
+  auto user_id = request->attributes()->get<int32_t>("sub");
+  try {
+    co_await db->execSqlCoro("update refresh_tokens "
+                             "set is_revoked = true "
+                             "where user_id = $1",
+                             user_id);
+    co_return ResponseBuilder::createSuccess("success log out", drogon::HttpStatusCode::k200OK);
+  } catch (const drogon::orm::DrogonDbException& error) {
     LOG_ERROR << "DATABASE ERROR: " << error.base().what();
     co_return ResponseBuilder::createError("Database error",
                                            drogon::HttpStatusCode::k500InternalServerError);
