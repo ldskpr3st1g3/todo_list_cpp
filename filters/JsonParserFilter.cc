@@ -14,7 +14,6 @@ auto JsonParserFilter::myFilter(const drogon::HttpRequestPtr& request)
   }
   if (errors.empty())
     co_return std::nullopt;
-  co_return ResponseBuilder::createError(
-      "Invalid json", drogon::HttpStatusCode::k400BadRequest,
-      std::move(JsonBuilder::createErrorJsonByVector(std::move(errors))));
+  co_return ResponseBuilder::createError("Invalid json", drogon::HttpStatusCode::k400BadRequest,
+                                         JsonBuilder::createErrorJsonByVector(std::move(errors)));
 }
