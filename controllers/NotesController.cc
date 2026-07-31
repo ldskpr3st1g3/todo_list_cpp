@@ -28,9 +28,8 @@ auto NoteController::createNewNote(const drogon::HttpRequestPtr request)
       JsonValidate::validateJson(*json_ptr, JsonValidate::required<std::string>("title"),
                                  JsonValidate::optional<std::string>("content"));
   if (!errors.empty()) {
-    co_return ResponseBuilder::createError(
-        "Invalid json", drogon::k400BadRequest,
-        std::move(JsonBuilder::createErrorJsonByVector(std::move(errors))));
+    co_return ResponseBuilder::createError("Invalid json", drogon::k400BadRequest,
+                                           JsonBuilder::createErrorJsonByVector(std::move(errors)));
   }
 
   auto db = drogon::app().getDbClient();
@@ -168,9 +167,8 @@ auto NoteController::editNoteById(const drogon::HttpRequestPtr request, int32_t 
       JsonValidate::validateJson(*json_ptr, JsonValidate::optionalNotEmpty<std::string>("title"),
                                  JsonValidate::optional<std::string>("content"));
   if (!errors.empty())
-    co_return ResponseBuilder::createError(
-        "Invalid json", drogon::HttpStatusCode::k400BadRequest,
-        std::move(JsonBuilder::createErrorJsonByVector(std::move(errors))));
+    co_return ResponseBuilder::createError("Invalid json", drogon::HttpStatusCode::k400BadRequest,
+                                           JsonBuilder::createErrorJsonByVector(std::move(errors)));
   auto db = drogon::app().getDbClient();
   if (!db) {
     LOG_ERROR << "DATABASE CONNECTION ERROR";
@@ -211,9 +209,8 @@ auto NoteController::addRoleByUserId(const drogon::HttpRequestPtr request, int32
   auto errors = JsonValidate::validateJson(*json_ptr, JsonValidate::required<std::string>("login"),
                                            JsonValidate::required<std::string>("role"));
   if (!errors.empty())
-    co_return ResponseBuilder::createError(
-        "Invalid json", drogon::HttpStatusCode::k400BadRequest,
-        std::move(JsonBuilder::createErrorJsonByVector(std::move(errors))));
+    co_return ResponseBuilder::createError("Invalid json", drogon::HttpStatusCode::k400BadRequest,
+                                           JsonBuilder::createErrorJsonByVector(std::move(errors)));
   auto db = drogon::app().getDbClient();
   if (!db) {
     LOG_ERROR << "DATABASE CONNECTION ERROR";

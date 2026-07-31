@@ -63,9 +63,8 @@ auto UserController::Registration(const drogon::HttpRequestPtr request)
                                            JsonValidate::required<std::string>("email"),
                                            JsonValidate::required<std::string>("password"));
   if (!errors.empty())
-    co_return ResponseBuilder::createError(
-        "Invalid json", drogon::HttpStatusCode::k400BadRequest,
-        std::move(JsonBuilder::createErrorJsonByVector(std::move(errors))));
+    co_return ResponseBuilder::createError("Invalid json", drogon::HttpStatusCode::k400BadRequest,
+                                           JsonBuilder::createErrorJsonByVector(std::move(errors)));
   std::string password = (*json_ptr)["password"].asString();
   std::optional<std::string> password_hash;
   try {
@@ -115,9 +114,8 @@ auto UserController::Authorization(const drogon::HttpRequestPtr request)
   auto errors = JsonValidate::validateJson(*json_ptr, JsonValidate::required<std::string>("email"),
                                            JsonValidate::required<std::string>("password"));
   if (!errors.empty())
-    co_return ResponseBuilder::createError(
-        "Invalid json", drogon::HttpStatusCode::k400BadRequest,
-        std::move(JsonBuilder::createErrorJsonByVector(std::move(errors))));
+    co_return ResponseBuilder::createError("Invalid json", drogon::HttpStatusCode::k400BadRequest,
+                                           JsonBuilder::createErrorJsonByVector(std::move(errors)));
   std::string password = (*json_ptr)["password"].asString();
   auto db = drogon::app().getDbClient();
   if (!db) {
@@ -194,9 +192,8 @@ auto UserController::Refresh(const drogon::HttpRequestPtr request)
   auto errors =
       JsonValidate::validateJson(*json_ptr, JsonValidate::required<std::string>("refresh_token"));
   if (!errors.empty())
-    co_return ResponseBuilder::createError(
-        "Invalid json", drogon::HttpStatusCode::k400BadRequest,
-        std::move(JsonBuilder::createErrorJsonByVector(std::move(errors))));
+    co_return ResponseBuilder::createError("Invalid json", drogon::HttpStatusCode::k400BadRequest,
+                                           JsonBuilder::createErrorJsonByVector(std::move(errors)));
   auto db = drogon::app().getDbClient();
   if (!db) {
     LOG_ERROR << "DATABASE CONNECTION ERROR";
@@ -283,9 +280,8 @@ auto UserController::editPublicData(const drogon::HttpRequestPtr request)
                                            JsonValidate::optional<std::string>("username"),
                                            JsonValidate::optional<int32_t>("age"));
   if (!errors.empty())
-    co_return ResponseBuilder::createError(
-        "Invalid json", drogon::HttpStatusCode::k400BadRequest,
-        std::move(JsonBuilder::createErrorJsonByVector(std::move(errors))));
+    co_return ResponseBuilder::createError("Invalid json", drogon::HttpStatusCode::k400BadRequest,
+                                           JsonBuilder::createErrorJsonByVector(std::move(errors)));
   auto db = drogon::app().getDbClient();
   if (!db) {
     LOG_ERROR << "DATABASE CONNECTION ERROR";
@@ -330,9 +326,8 @@ auto UserController::editPrivateData(const drogon::HttpRequestPtr request)
                                  JsonValidate::optionalNotEmpty<std::string>("email"),
                                  JsonValidate::optionalNotEmpty<std::string>("password"));
   if (!errors.empty())
-    co_return ResponseBuilder::createError(
-        "Invalid json", drogon::HttpStatusCode::k400BadRequest,
-        std::move(JsonBuilder::createErrorJsonByVector(std::move(errors))));
+    co_return ResponseBuilder::createError("Invalid json", drogon::HttpStatusCode::k400BadRequest,
+                                           JsonBuilder::createErrorJsonByVector(std::move(errors)));
   auto current_loop = trantor::EventLoop::getEventLoopOfCurrentThread();
   auto db = drogon::app().getDbClient();
   if (!db) {
