@@ -10,16 +10,17 @@ class NoteController : public drogon::HttpController<NoteController> {
 
 public:
   METHOD_LIST_BEGIN
-  ADD_METHOD_TO(NoteController::createNewNote, "/api/v1/tasks", drogon::Post, "AuthFilter");
+  ADD_METHOD_TO(NoteController::createNewNote, "/api/v1/tasks", drogon::Post, "AuthFilter",
+                "JsonParserFilter");
   ADD_METHOD_TO(NoteController::getNoteById, "/api/v1/tasks/{id}", drogon::Get, "AuthFilter",
                 "AccessFilter");
   ADD_METHOD_TO(NoteController::deleteNoteById, "/api/v1/tasks/{id}", drogon::Delete, "AuthFilter",
                 "AccessFilter");
   ADD_METHOD_TO(NoteController::editNoteById, "/api/v1/tasks/{id}", drogon::Patch, "AuthFilter",
-                "AccessFilter");
+                "AccessFilter", "JsonParserFilter");
   ADD_METHOD_TO(NoteController::getAllHeadsOfNotes, "/api/v1/tasks", drogon::Get, "AuthFilter");
   ADD_METHOD_TO(NoteController::addRoleByUserId, "/api/v1/tasks/roles/{id}", drogon::Post,
-                "AuthFilter", "AccessFilter");
+                "AuthFilter", "AccessFilter", "JsonParserFilter");
   METHOD_LIST_END
 
   auto createNewNote(const drogon::HttpRequestPtr request) -> drogon::Task<drogon::HttpResponsePtr>;

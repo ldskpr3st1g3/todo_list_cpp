@@ -6,14 +6,16 @@
 class UserController : public drogon::HttpController<UserController> {
 public:
   METHOD_LIST_BEGIN
-  ADD_METHOD_TO(UserController::Registration, "/api/v1/users/registr", drogon::Post);
-  ADD_METHOD_TO(UserController::Authorization, "/api/v1/users/login", drogon::Post);
-  ADD_METHOD_TO(UserController::Refresh, "/api/v1/users/refresh", drogon::Post);
-  ADD_METHOD_TO(UserController::Me, "api/v1/users/me", drogon::Get, "AuthFilter");
+  ADD_METHOD_TO(UserController::Registration, "/api/v1/users/register", drogon::Post,
+                "JsonParserFilter");
+  ADD_METHOD_TO(UserController::Authorization, "/api/v1/users/login", drogon::Post,
+                "JsonParserFilter");
+  ADD_METHOD_TO(UserController::Refresh, "/api/v1/users/refresh", drogon::Post, "JsonParserFilter");
+  ADD_METHOD_TO(UserController::Me, "/api/v1/users/me", drogon::Get, "AuthFilter");
   ADD_METHOD_TO(UserController::editPublicData, "/api/v1/users/me/public", drogon::Patch,
-                "AuthFilter");
+                "AuthFilter", "JsonParserFilter");
   ADD_METHOD_TO(UserController::editPrivateData, "/api/v1/users/me/private", drogon::Patch,
-                "AuthFilter");
+                "AuthFilter", "JsonParserFilter");
   ADD_METHOD_TO(UserController::signOutFromAllDevices, "/api/v1/users/me/logout", drogon::Patch,
                 "AuthFilter");
 

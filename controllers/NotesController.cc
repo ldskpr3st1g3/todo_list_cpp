@@ -1,4 +1,5 @@
 #include "NotesController.h"
+#include "JsonBuilder.h"
 #include "JsonValidate.h"
 #include "RefreshTokens.h"
 #include "ResponseBuilder.h"
@@ -21,14 +22,23 @@ bool RoleChecker(std::string&& role, std::initializer_list<std::string> roles) {
 auto NoteController::createNewNote(const drogon::HttpRequestPtr request)
     -> drogon::Task<drogon::HttpResponsePtr> {
   auto json_ptr = request->getJsonObject();
-  if (!json_ptr ||
-      !JsonValidation::myValidate(*json_ptr,
-                                  {
-                                      "title",
-                                  }) ||
-      (*json_ptr)["title"].asString().empty())
-    co_return ResponseBuilder::createError("Invalid JSON or no JSON provided");
+  if (!json_ptr)
+    co_return ResponseBuilder::createError("No json provided");
+  std::vector<std::string> errors =
+      JsonValidate::validateJson(*json_ptr, JsonValidate::required<std::string>("title"),
+                                 JsonValidate::optional<std::string>("content"));
+  if (!errors.empty()) {
+    co_return ResponseBuilder::createError(
+        "Invalid json", drogon::k400BadRequest,
+        std::move(JsonBuilder::createErrorJsonByVector(std::move(errors))));
+  }
+
   auto db = drogon::app().getDbClient();
+  if (!db) {
+    LOG_ERROR << "DATABASE CONNECTION ERROR";
+    co_return ResponseBuilder::createError("Database connection error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
   auto user_id = request->attributes()->get<int32_t>("sub");
   drogon_model::notes_db::Notes new_note;
   Json::Value json_for_creation;
@@ -59,6 +69,11 @@ auto NoteController::getAllHeadsOfNotes(const drogon::HttpRequestPtr request)
     -> drogon::Task<drogon::HttpResponsePtr> {
   int32_t user_id = request->attributes()->get<int32_t>("sub");
   auto db = drogon::app().getDbClient();
+  if (!db) {
+    LOG_ERROR << "DATABASE CONNECTION ERROR";
+    co_return ResponseBuilder::createError("Database connection error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
   try {
     auto notesInfo = co_await db->execSqlCoro("select n.id, n.title, n.updated_at from notes n "
                                               "join users_notes un on n.id  = un.note_id "
@@ -84,6 +99,11 @@ auto NoteController::getNoteById(const drogon::HttpRequestPtr request, int32_t n
     -> drogon::Task<drogon::HttpResponsePtr> {
   int32_t user_id = request->attributes()->get<int32_t>("sub");
   auto db = drogon::app().getDbClient();
+  if (!db) {
+    LOG_ERROR << "DATABASE CONNECTION ERROR";
+    co_return ResponseBuilder::createError("Database connection error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
   try {
     auto needed_note =
         co_await db->execSqlCoro("select n.* , un.role from notes n "
@@ -117,6 +137,11 @@ auto NoteController::deleteNoteById(const drogon::HttpRequestPtr request, int32_
   if (!RoleChecker(std::move(user_role), {"owner"}))
     co_return ResponseBuilder::createError("Access denied", drogon::HttpStatusCode::k403Forbidden);
   auto db = drogon::app().getDbClient();
+  if (!db) {
+    LOG_ERROR << "DATABASE CONNECTION ERROR";
+    co_return ResponseBuilder::createError("Database connection error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
   drogon::orm::CoroMapper<drogon_model::notes_db::Notes> note_mapper(db);
   try {
     auto del = co_await note_mapper.deleteByPrimaryKey(note_id);
@@ -137,9 +162,21 @@ auto NoteController::editNoteById(const drogon::HttpRequestPtr request, int32_t 
   if (!RoleChecker(std::move(user_role), {"editor", "owner"}))
     co_return ResponseBuilder::createError("Access denied", drogon::HttpStatusCode::k403Forbidden);
   auto json_ptr = request->getJsonObject();
-  if (!json_ptr || !JsonValidation::myValidate(*json_ptr, {"title"}))
-    co_return ResponseBuilder::createError("Invalid JSON or no JSON provided");
+  if (!json_ptr)
+    co_return ResponseBuilder::createError("No json provided");
+  auto errors =
+      JsonValidate::validateJson(*json_ptr, JsonValidate::optionalNotEmpty<std::string>("title"),
+                                 JsonValidate::optional<std::string>("content"));
+  if (!errors.empty())
+    co_return ResponseBuilder::createError(
+        "Invalid json", drogon::HttpStatusCode::k400BadRequest,
+        std::move(JsonBuilder::createErrorJsonByVector(std::move(errors))));
   auto db = drogon::app().getDbClient();
+  if (!db) {
+    LOG_ERROR << "DATABASE CONNECTION ERROR";
+    co_return ResponseBuilder::createError("Database connection error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
   drogon::orm::CoroMapper<drogon_model::notes_db::Notes> mapper(db);
   try {
     auto user_id = request->attributes()->get<int32_t>("sub");
@@ -169,9 +206,20 @@ auto NoteController::addRoleByUserId(const drogon::HttpRequestPtr request, int32
     co_return ResponseBuilder::createError("Access denied", drogon::HttpStatusCode::k403Forbidden);
 
   auto json_ptr = request->getJsonObject();
-  if (!json_ptr || !JsonValidation::myValidate(*json_ptr, {"login", "role"}))
-    co_return ResponseBuilder::createError("Invalid Json or no Json provided");
+  if (!json_ptr)
+    co_return ResponseBuilder::createError("No json provided");
+  auto errors = JsonValidate::validateJson(*json_ptr, JsonValidate::required<std::string>("login"),
+                                           JsonValidate::required<std::string>("role"));
+  if (!errors.empty())
+    co_return ResponseBuilder::createError(
+        "Invalid json", drogon::HttpStatusCode::k400BadRequest,
+        std::move(JsonBuilder::createErrorJsonByVector(std::move(errors))));
   auto db = drogon::app().getDbClient();
+  if (!db) {
+    LOG_ERROR << "DATABASE CONNECTION ERROR";
+    co_return ResponseBuilder::createError("Database connection error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
   drogon::orm::CoroMapper<drogon_model::notes_db::UsersNotes> un_mapper(db);
   drogon::orm::CoroMapper<drogon_model::notes_db::Users> u_mapper(db);
   auto new_role = (*json_ptr)["role"].asString();

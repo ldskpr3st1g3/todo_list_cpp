@@ -22,10 +22,14 @@ auto AccessFilter::myFilter(const drogon::HttpRequestPtr& request)
     co_return ResponseBuilder::createError("Invalid note ID format",
                                            drogon::HttpStatusCode::k400BadRequest);
   }
-
+  auto db = drogon::app().getDbClient();
+  drogon::orm::CoroMapper<drogon_model::notes_db::UsersNotes> un_mapper(db);
+  if (!db) {
+    LOG_ERROR << "DATABASE CONNECTION ERROR";
+    co_return ResponseBuilder::createError("Database connection error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
   try {
-    auto db = drogon::app().getDbClient();
-    drogon::orm::CoroMapper<drogon_model::notes_db::UsersNotes> un_mapper(db);
     auto conjuction = co_await un_mapper.findBy(
         drogon::orm::Criteria(drogon_model::notes_db::UsersNotes::Cols::_note_id,
                               drogon::orm::CompareOperator::EQ, note_id) &&
