@@ -3,8 +3,8 @@
 #include <array>
 #include <string_view>
 
-constexpr std::array<std::string_view, 10> allowed_keys = {
-    "age",   "content",       "email", "login", "password",
+constexpr std::array<std::string_view, 11> allowed_keys = {
+    "age",   "content",       "email", "login", "new_password", "password",
     "phone", "refresh_token", "role",  "title", "username"};
 
 inline bool isValidKey(std::string_view key) {

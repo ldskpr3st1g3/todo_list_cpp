@@ -9,7 +9,7 @@ inline auto createSuccess(std::string_view message,
                           drogon::HttpStatusCode code = drogon::HttpStatusCode::k200OK,
                           std::optional<Json::Value> js = std::nullopt) -> drogon::HttpResponsePtr {
   Json::Value json;
-  json["status"] = "success";
+  json["status"] = "Success";
   json["message"] = message;
   if (js.has_value()) {
     json["data"] = std::move(js).value();
@@ -23,7 +23,7 @@ inline auto createError(std::string_view message,
                         drogon::HttpStatusCode&& code = drogon::HttpStatusCode::k400BadRequest,
                         std::optional<Json::Value> js = std::nullopt) -> drogon::HttpResponsePtr {
   Json::Value json;
-  json["status"] = "error";
+  json["status"] = "Error";
   json["message"] = message;
   if (js.has_value()) {
     json["errors"] = std::move(js).value()["errors"];

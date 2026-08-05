@@ -29,7 +29,6 @@ auto AuthFilter::myFilter(const drogon::HttpRequestPtr& request)
 
   } catch (const std::exception& error) {
     LOG_ERROR << "JWT ERROR: " << error.what();
-    co_return ResponseBuilder::createError("Malformed jwt",
-                                           drogon::HttpStatusCode::k401Unauthorized);
+    co_return ResponseBuilder::createError("Malformed jwt", drogon::HttpStatusCode::k403Forbidden);
   }
 }
