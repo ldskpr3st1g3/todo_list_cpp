@@ -137,21 +137,21 @@ auto UserController::Authorization(const drogon::HttpRequestPtr request)
                                            drogon::HttpStatusCode::k500InternalServerError);
   }
   std::string password_hash = *user.getPasswordHash();
-  bool flag;
+
   try {
-    flag = co_await run_in_pool(
+    bool flag = co_await run_in_pool(
         getGlobalPool(), currentLoop,
         [password = std::move(password), password_hash = std::move(password_hash)]() {
           return Hasher::verify(password, password_hash);
         });
+    if (!flag)
+      co_return ResponseBuilder::createError("Access denied",
+                                             drogon::HttpStatusCode::k403Forbidden);
   } catch (std::exception& error) {
     LOG_ERROR << "THREADPOOL ERROR" << error.what() << '\n';
     co_return ResponseBuilder::createError("Threadpool error",
                                            drogon::HttpStatusCode::k500InternalServerError);
   }
-  if (!flag)
-    co_return ResponseBuilder::createError("Unauthorized",
-                                           drogon::HttpStatusCode::k401Unauthorized);
 
   std::string access_token;
   try {
@@ -179,7 +179,7 @@ auto UserController::Authorization(const drogon::HttpRequestPtr request)
   json["access_token"] = std::move(access_token);
   json["refresh_token"] = std::move(newRefreshTokenString);
   json["token_type"] = "Bearer";
-  co_return ResponseBuilder::createSuccess("Login successful", drogon::HttpStatusCode::k200OK,
+  co_return ResponseBuilder::createSuccess("Login successful", drogon::HttpStatusCode::k201Created,
                                            std::move(json));
 }
 
@@ -201,31 +201,34 @@ auto UserController::Refresh(const drogon::HttpRequestPtr request)
                                            drogon::HttpStatusCode::k500InternalServerError);
   }
   drogon::orm::CoroMapper<drogon_model::notes_db::RefreshTokens> token_mapper(db);
-  std::optional<drogon_model::notes_db::RefreshTokens> dbToken;
+  drogon_model::notes_db::RefreshTokens dbToken;
   try {
     dbToken = co_await token_mapper.findOne({drogon_model::notes_db::RefreshTokens::Cols::_token,
                                              drogon::orm::CompareOperator::EQ,
                                              (*json_ptr)["refresh_token"].asString()});
+    if (*dbToken.getExpiresAt() < trantor::Date::now())
+      co_return ResponseBuilder::createError("Token is expired",
+                                             drogon::HttpStatusCode::k403Forbidden);
+    else if (dbToken.getValueOfIsRevoked())
+      co_return ResponseBuilder::createError("Access denied",
+                                             drogon::HttpStatusCode::k403Forbidden);
 
+  } catch (drogon::orm::UnexpectedRows& error) {
+    co_return ResponseBuilder::createError("Token not found", drogon::HttpStatusCode::k404NotFound);
   } catch (drogon::orm::DrogonDbException& error) {
     LOG_ERROR << "DATABASE ERROR: " << error.base().what() << '\n';
     co_return ResponseBuilder::createError("Database error",
                                            drogon::HttpStatusCode::k500InternalServerError);
   }
-  if (!dbToken.has_value())
-    co_return ResponseBuilder::createError("Refresh token not found",
-                                           drogon::HttpStatusCode::k404NotFound);
-  if (dbToken->getValueOfIsRevoked() || dbToken->getValueOfExpiresAt() < trantor::Date::now())
-    co_return ResponseBuilder::createError("Refresh token expired or revoked",
-                                           drogon::HttpStatusCode::k401Unauthorized);
+
   std::string new_access_token;
-  auto user_id = *dbToken->getUserId();
-  generateAccessTokenString(new_access_token, *dbToken->getUserId());
+  auto user_id = *dbToken.getUserId();
+  generateAccessTokenString(new_access_token, *dbToken.getUserId());
   auto trans = co_await db->newTransactionCoro();
   try {
-    dbToken->setIsRevoked(true);
+    dbToken.setIsRevoked(true);
     drogon::orm::CoroMapper<drogon_model::notes_db::RefreshTokens> transMapper(trans);
-    co_await transMapper.update(dbToken.value());
+    co_await transMapper.update(dbToken);
 
     std::string new_refresh_token_string = generateRefreshTokenString();
     drogon_model::notes_db::RefreshTokens new_refresh_token;
@@ -238,12 +241,12 @@ auto UserController::Refresh(const drogon::HttpRequestPtr request)
     json["access_token"] = std::move(new_access_token);
     json["refresh_token"] = std::move(new_refresh_token_string);
     json["token_type"] = "Bearer";
-    co_return ResponseBuilder::createSuccess("new tokens created",
+    co_return ResponseBuilder::createSuccess("New tokens created",
                                              drogon::HttpStatusCode::k201Created, std::move(json));
   } catch (const drogon::orm::DrogonDbException& error) {
     trans->rollback();
     LOG_ERROR << "TOKEN ROTATION DB ERROR: " << error.base().what() << '\n';
-    co_return ResponseBuilder::createError("token rotation db error",
+    co_return ResponseBuilder::createError("Token rotation db error",
                                            drogon::HttpStatusCode::k500InternalServerError);
   }
 }
@@ -300,7 +303,7 @@ auto UserController::editPublicData(const drogon::HttpRequestPtr request)
       user.setPhone((*json_ptr)["phone"].asString());
     user.setUpdatedAt(trantor::Date::now());
     co_await u_mapper.update(user);
-    co_return ResponseBuilder::createSuccess("user edited", drogon::HttpStatusCode::k201Created,
+    co_return ResponseBuilder::createSuccess("User edited", drogon::HttpStatusCode::k200OK,
                                              std::move(user).toJson());
   } catch (const drogon::orm::DrogonDbException& error) {
     LOG_ERROR << "DATABASE ERROR: " << error.base().what();
@@ -324,7 +327,8 @@ auto UserController::editPrivateData(const drogon::HttpRequestPtr request)
   auto errors =
       JsonValidate::validateJson(*json_ptr, JsonValidate::optionalNotEmpty<std::string>("login"),
                                  JsonValidate::optionalNotEmpty<std::string>("email"),
-                                 JsonValidate::optionalNotEmpty<std::string>("password"));
+                                 JsonValidate::optionalNotEmpty<std::string>("new_password"),
+                                 JsonValidate::required<std::string>("password"));
   if (!errors.empty())
     co_return ResponseBuilder::createError("Invalid json", drogon::HttpStatusCode::k400BadRequest,
                                            JsonBuilder::createErrorJsonByVector(std::move(errors)));
@@ -336,17 +340,42 @@ auto UserController::editPrivateData(const drogon::HttpRequestPtr request)
                                            drogon::HttpStatusCode::k500InternalServerError);
   }
   drogon::orm::CoroMapper<drogon_model::notes_db::Users> u_mapper(db);
+  drogon_model::notes_db::Users user;
+  try {
+    user = co_await u_mapper.findByPrimaryKey(user_id);
+  } catch (const drogon::orm::DrogonDbException& error) {
+    LOG_ERROR << "DATABASE ERROR" << error.base().what();
+    co_return ResponseBuilder::createError("Database error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
+  std::string password_hash = *user.getPasswordHash();
+  std::string password = (*json_ptr)["password"].asString();
+  try {
+    bool flag =
+        co_await run_in_pool(getGlobalPool(), current_loop,
+                             [password = std::move(password), psh = std::move(password_hash)]() {
+                               return Hasher::verify(password, psh);
+                             });
+    if (!flag)
+      co_return ResponseBuilder::createError("Access denied",
+                                             drogon::HttpStatusCode::k403Forbidden);
+  } catch (std::exception& error) {
+    LOG_ERROR << "THREADPOOL ERROR IN HASHER" << error.what();
+    co_return ResponseBuilder::createError("Something went wrong",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
+
   try {
     auto current_user = co_await u_mapper.findByPrimaryKey(user_id);
     if (json_ptr->isMember("email"))
       current_user.setEmail((*json_ptr)["email"].asString());
     if (json_ptr->isMember("login"))
       current_user.setLogin((*json_ptr)["login"].asString());
-    if (json_ptr->isMember("password")) {
+    if (json_ptr->isMember("new_password")) {
       try {
         auto password_hash = co_await run_in_pool(
             getGlobalPool(), current_loop,
-            [password = (*json_ptr)["password"].asString()]() -> std::optional<std::string> {
+            [password = (*json_ptr)["new_password"].asString()]() -> std::optional<std::string> {
               return Hasher::hash(password);
             });
         if (password_hash.has_value())
@@ -362,7 +391,7 @@ auto UserController::editPrivateData(const drogon::HttpRequestPtr request)
     }
 
     co_await u_mapper.update(current_user);
-    co_return ResponseBuilder::createSuccess("email changed", drogon::HttpStatusCode::k201Created,
+    co_return ResponseBuilder::createSuccess("Data changed", drogon::HttpStatusCode::k200OK,
                                              current_user.toJson());
   } catch (drogon::orm::DrogonDbException& error) {
     LOG_ERROR << "DATABASE ERROR: " << error.base().what();
@@ -388,7 +417,7 @@ auto UserController::signOutFromAllDevices(const drogon::HttpRequestPtr request)
                              "set is_revoked = true "
                              "where user_id = $1",
                              user_id);
-    co_return ResponseBuilder::createSuccess("success log out", drogon::HttpStatusCode::k200OK);
+    co_return ResponseBuilder::createSuccess("Success log out", drogon::HttpStatusCode::k200OK);
   } catch (const drogon::orm::DrogonDbException& error) {
     LOG_ERROR << "DATABASE ERROR: " << error.base().what();
     co_return ResponseBuilder::createError("Database error",

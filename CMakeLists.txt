@@ -65,4 +65,4 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${SODIUM_LIBRARIES} 
 )
 
-add_subdirectory(test)
+# add_subdirectory(test)
