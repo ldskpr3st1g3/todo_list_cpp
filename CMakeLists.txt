@@ -21,6 +21,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(Drogon CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
+find_package(PostgreSQL REQUIRED)  # <-- ДОБАВИТЬ ЭТУ СТРОКУ
 
 
 pkg_check_modules(SODIUM REQUIRED libsodium)

@@ -10,6 +10,6 @@ int main() {
   drogon::app().loadConfigFile("../config.json");
 
   drogon::app().run();
-  LOG_INFO << "server is running";
+  LOG_INFO << "server is running!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
   return 0;
 }

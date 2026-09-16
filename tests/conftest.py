@@ -1,16 +1,24 @@
+import os
 import pytest 
 import psycopg2
 
 @pytest.fixture(scope="class")
 def clean_database():
-    conn = psycopg2.connect(
-        dbname="notes_db",
-        user="defect",
-        password="Qwe741741qwe",
-        host="127.0.0.1",
-        port="5432"
-        )
-    cur = conn.cursor();
+    # Читаем настройки из ENV. 
+    # Если переменных нет (локальный запуск), берем дефолты для WSL (порт 5433!)
+    db_config = {
+        "dbname": os.getenv("DB_NAME", "notes_db"),
+        "user": os.getenv("DB_USER", "defect"),
+        "password": os.getenv("DB_PASSWORD", "Qwe741741qwe"),
+        "host": os.getenv("DB_HOST", "127.0.0.1"), # В докере будет 'db', локально '127.0.0.1'
+        "port": os.getenv("DB_PORT", "5433")        # В докере будет '5432', локально '5433'
+    }
+
+    # Подключаемся
+    conn = psycopg2.connect(**db_config)
+    cur = conn.cursor()
+    
+    # Твоя логика очистки (она отличная, оставляем как есть)
     cur.execute("""
         DO $$ 
         DECLARE 
