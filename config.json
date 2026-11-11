@@ -111,6 +111,20 @@
                 "use_local_time": true,
                 "log_index": 0
             }
+        },
+        {
+            "name": "TokenServicePlugin",
+            "dependencies": [],
+            "config" : {
+                "some_setting" : "value"
+            }
+        },
+        {
+            "name": "UserServicePlugin",
+            "dependencies": ["TokenServicePlugin"],
+            "config": {
+                "some_setting": "value"
+            }
         }
     ],
     "custom_config": {

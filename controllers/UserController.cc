@@ -1,5 +1,5 @@
 #include "UserController.h"
-#include "CpuThreadPool.h"
+#include "Exceptions.h"
 #include "JsonBuilder.h"
 #include "JsonValidate.h"
 #include "PoolAwaiter.h"
@@ -7,6 +7,7 @@
 #include "ResponseBuilder.h"
 #include "SodiumHasher.h"
 #include "Users.h"
+#include "plugins/UserServicePlugin.h"
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -14,17 +15,13 @@
 #include <drogon/orm/CoroMapper.h>
 #include <drogon/orm/Criteria.h>
 #include <drogon/orm/Exception.h>
+#include <drogon/utils/coroutine.h>
 #include <exception>
 #include <json/value.h>
 #include <jwt-cpp/jwt.h>
 #include <string>
 #include <trantor/net/EventLoop.h>
 #include <trantor/utils/Date.h>
-
-CpuThreadPool& getGlobalPool() {
-  static CpuThreadPool pool(2);
-  return pool;
-}
 
 std::string generateRefreshTokenString() {
   std::array<uint8_t, 64> random_bytes{};
@@ -53,13 +50,12 @@ auto generateAccessTokenString(std::string& token, int32_t id) -> void {
                   drogon::app().getCustomConfig()["jwt"]["secret_key"].asString()});
 }
 
+#if 0
 auto UserController::Registration(const drogon::HttpRequestPtr request)
     -> drogon::Task<drogon::HttpResponsePtr> {
   auto* currentLoop = trantor::EventLoop::getEventLoopOfCurrentThread();
   auto json_ptr = request->getJsonObject();
-  if (!json_ptr)
-    co_return ResponseBuilder::createError("No json provided");
-  auto errors = JsonValidate::validateJson(*json_ptr, JsonValidate::required<std::string>("login"),
+  auto errors = JsonValidate::validateJson(json_ptr, JsonValidate::required<std::string>("login"),
                                            JsonValidate::required<std::string>("email"),
                                            JsonValidate::required<std::string>("password"));
   if (!errors.empty())
@@ -104,7 +100,66 @@ auto UserController::Registration(const drogon::HttpRequestPtr request)
                                            drogon::HttpStatusCode::k500InternalServerError);
   }
 }
+#endif
 
+auto UserController::Registration(const drogon::HttpRequestPtr request)
+    -> drogon::Task<drogon::HttpResponsePtr> {
+  auto json_ptr = request->getJsonObject();
+  auto errors = JsonValidate::validateJson(json_ptr, JsonValidate::required<std::string>("email"),
+                                           JsonValidate::required<std::string>("password"),
+                                           JsonValidate::required<std::string>("login"));
+  if (!errors.empty())
+    co_return ResponseBuilder::createError("Invalid Json or no Json provided",
+                                           drogon::HttpStatusCode::k400BadRequest,
+                                           JsonBuilder::createErrorJsonByVector(std::move(errors)));
+  auto service = drogon::app().getPlugin<UserServicePlugin>()->getService();
+  auto [data, status] = co_await service->RegisterUser(json_ptr);
+  switch (status) {
+    case drogon::HttpStatusCode::k201Created:
+      co_return ResponseBuilder::createSuccess("User created", std::move(status),
+                                               std::move(*data).toJson());
+    case drogon::HttpStatusCode::k409Conflict:
+      co_return ResponseBuilder::createError("User with this email or login already exists",
+                                             drogon::HttpStatusCode::k409Conflict);
+    default:
+      co_return ResponseBuilder::createError("Server error",
+                                             drogon::HttpStatusCode::k500InternalServerError);
+  }
+}
+
+auto UserController::Authorization(const drogon::HttpRequestPtr request)
+    -> drogon::Task<drogon::HttpResponsePtr> {
+  auto json = request->getJsonObject();
+  auto errors = JsonValidate::validateJson(json, JsonValidate::required<std::string>("email"),
+                                           JsonValidate::required<std::string>("password"));
+  if (!errors.empty())
+    co_return ResponseBuilder::createError("Invalid json or no json provided",
+                                           drogon::HttpStatusCode::k400BadRequest,
+                                           JsonBuilder::createErrorJsonByVector(std::move(errors)));
+  auto service = drogon::app().getPlugin<UserServicePlugin>()->getService();
+  try {
+    auto response = co_await service->authorizeUser(std::move(json));
+    if (!response)
+      co_return ResponseBuilder::createError("Invalid email or password",
+                                             drogon::HttpStatusCode::k401Unauthorized);
+    co_return ResponseBuilder::createSuccess("Login successful", drogon::HttpStatusCode::k200OK,
+                                             std::move(response));
+  } catch (const drogon::orm::DrogonDbException& e) {
+    co_return ResponseBuilder::createError("Database error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  } catch (const ThreadPoolException& e) {
+    co_return ResponseBuilder::createError("Threadpool error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  } catch (const JwtException& e) {
+    co_return ResponseBuilder::createError("Jwt error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  } catch (const std::exception& e) {
+    co_return ResponseBuilder::createError("Jwt error",
+                                           drogon::HttpStatusCode::k500InternalServerError);
+  }
+}
+
+#if 0
 auto UserController::Authorization(const drogon::HttpRequestPtr request)
     -> drogon::Task<drogon::HttpResponsePtr> {
   auto* currentLoop = trantor::EventLoop::getEventLoopOfCurrentThread();
@@ -137,7 +192,6 @@ auto UserController::Authorization(const drogon::HttpRequestPtr request)
                                            drogon::HttpStatusCode::k500InternalServerError);
   }
   std::string password_hash = *user.getPasswordHash();
-
   try {
     bool flag = co_await run_in_pool(
         getGlobalPool(), currentLoop,
@@ -182,15 +236,14 @@ auto UserController::Authorization(const drogon::HttpRequestPtr request)
   co_return ResponseBuilder::createSuccess("Login successful", drogon::HttpStatusCode::k201Created,
                                            std::move(json));
 }
+#endif
 
 auto UserController::Refresh(const drogon::HttpRequestPtr request)
     -> drogon::Task<drogon::HttpResponsePtr> {
   auto* currentLoop = trantor::EventLoop::getEventLoopOfCurrentThread();
   auto json_ptr = request->getJsonObject();
-  if (!json_ptr)
-    co_return ResponseBuilder::createError("No json provided");
   auto errors =
-      JsonValidate::validateJson(*json_ptr, JsonValidate::required<std::string>("refresh_token"));
+      JsonValidate::validateJson(json_ptr, JsonValidate::required<std::string>("refresh_token"));
   if (!errors.empty())
     co_return ResponseBuilder::createError("Invalid json", drogon::HttpStatusCode::k400BadRequest,
                                            JsonBuilder::createErrorJsonByVector(std::move(errors)));
@@ -250,7 +303,7 @@ auto UserController::Refresh(const drogon::HttpRequestPtr request)
                                            drogon::HttpStatusCode::k500InternalServerError);
   }
 }
-
+#if 0
 auto UserController::Me(const drogon::HttpRequestPtr request)
     -> drogon::Task<drogon::HttpResponsePtr> {
   int32_t user_id = request->attributes()->get<int32_t>("sub");
@@ -272,14 +325,30 @@ auto UserController::Me(const drogon::HttpRequestPtr request)
                                            drogon::HttpStatusCode::k500InternalServerError);
   }
 }
+#endif
+auto UserController::Me(const drogon::HttpRequestPtr request)
+    -> drogon::Task<drogon::HttpResponsePtr> {
+  auto plugin = drogon::app().getPlugin<UserServicePlugin>();
+  auto service = plugin->getService();
+  auto user_id = request->attributes()->get<int32_t>("sub");
+  try {
+    auto user = co_await service->getUserById(user_id);
+    if (user) {
+      co_return ResponseBuilder::createSuccess("Current user", drogon::HttpStatusCode::k200OK,
+                                               user->toJson());
+    } else {
+      co_return ResponseBuilder::createError("User not found", drogon::k404NotFound);
+    }
+  } catch (const drogon::orm::DrogonDbException& e) {
+    co_return ResponseBuilder::createError("Database error", drogon::k500InternalServerError);
+  }
+}
 
 auto UserController::editPublicData(const drogon::HttpRequestPtr request)
     -> drogon ::Task<drogon::HttpResponsePtr> {
   auto user_id = request->attributes()->get<int32_t>("sub");
   auto json_ptr = request->getJsonObject();
-  if (!json_ptr)
-    co_return ResponseBuilder::createError("No json provided");
-  auto errors = JsonValidate::validateJson(*json_ptr, JsonValidate::optional<std::string>("phone"),
+  auto errors = JsonValidate::validateJson(json_ptr, JsonValidate::optional<std::string>("phone"),
                                            JsonValidate::optional<std::string>("username"),
                                            JsonValidate::optional<int32_t>("age"));
   if (!errors.empty())
@@ -320,12 +389,9 @@ auto UserController::editPrivateData(const drogon::HttpRequestPtr request)
     -> drogon::Task<drogon::HttpResponsePtr> {
   auto user_id = request->attributes()->get<int32_t>("sub");
   auto json_ptr = request->getJsonObject();
-  if (!json_ptr)
-    co_return ResponseBuilder::createError("Invalid Json or no Json provided",
-                                           drogon::HttpStatusCode::k400BadRequest);
 
   auto errors =
-      JsonValidate::validateJson(*json_ptr, JsonValidate::optionalNotEmpty<std::string>("login"),
+      JsonValidate::validateJson(json_ptr, JsonValidate::optionalNotEmpty<std::string>("login"),
                                  JsonValidate::optionalNotEmpty<std::string>("email"),
                                  JsonValidate::optionalNotEmpty<std::string>("new_password"),
                                  JsonValidate::required<std::string>("password"));

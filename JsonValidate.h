@@ -1,6 +1,8 @@
 #pragma once
 #include <format>
 #include <json/json.h>
+#include <memory>
+#include <vector>
 
 namespace JsonValidate {
 
@@ -17,7 +19,6 @@ template <typename T> inline auto checkJsonType(const Json::Value& pjson) -> boo
 }
 
 template <typename T> struct FieldRule {
-
   std::string_view name;
   bool is_required;
   bool is_empty;
@@ -26,31 +27,47 @@ template <typename T> struct FieldRule {
 template <typename T> inline auto required(std::string_view field_name) -> FieldRule<T> {
   return {field_name, true, false};
 }
+
 template <typename T> inline auto optional(std::string_view field_name) -> FieldRule<T> {
   return {field_name, false, true};
 }
+
 template <typename T> inline auto optionalNotEmpty(std::string_view field_name) -> FieldRule<T> {
   return {field_name, false, false};
 }
 
 template <typename T>
-inline void RuleCheck(const Json::Value& pjson, FieldRule<T>& rule,
+inline void RuleCheck(const std::shared_ptr<Json::Value>& pjson, FieldRule<T>& rule,
                       std::vector<std::string>& errors) {
+  if (!pjson) {
+    if (rule.is_required) {
+      errors.push_back(std::format("JSON is null, missing required field: '{}'", rule.name));
+    }
+    return;
+  }
+
   auto field_name = rule.name;
-  if (!pjson.isMember(field_name)) {
+  if (!pjson->isMember(field_name)) {
     if (rule.is_required) {
       errors.push_back(std::format("Missing required field: '{}'", field_name));
     }
     return;
   }
-  if (!checkJsonType<T>(pjson[field_name]))
+
+  if (!checkJsonType<T>((*pjson)[field_name]))
     errors.push_back(std::format("Invalid type for field '{}'", field_name));
-  if (!rule.is_empty && std::is_same_v<T, std::string> && pjson[field_name].asString().empty())
+
+  if (!rule.is_empty && std::is_same_v<T, std::string> && (*pjson)[field_name].asString().empty())
     errors.push_back(std::format("Field '{}' can't be empty", field_name));
 }
 
 template <typename... Rules>
-inline auto validateJson(const Json::Value& pjson, Rules... rules) -> std::vector<std::string> {
+inline auto validateJson(const std::shared_ptr<Json::Value>& pjson, Rules... rules)
+    -> std::vector<std::string> {
+
+  if (!pjson)
+    return {"No json provided"};
+
   std::vector<std::string> errors;
   (RuleCheck(pjson, rules, errors), ...);
   return errors;

@@ -574,3 +574,9 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+
+# tests
+tests/test_config.json
+
+config.json
