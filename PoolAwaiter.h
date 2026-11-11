@@ -60,3 +60,8 @@ auto run_in_pool(CpuThreadPool& pool, trantor::EventLoop* loop, Func&& func) {
   state->loop = loop;
   return PoolAwaiter<ReturnType, Func>{std::forward<Func>(func), pool, state};
 }
+
+inline CpuThreadPool& getGlobalPool() {
+  static CpuThreadPool pool(2);
+  return pool;
+}

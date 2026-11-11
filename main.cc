@@ -7,9 +7,10 @@ int main() {
     return 1;
   }
   LOG_INFO << "Libsodium initialized successfully.";
+
   drogon::app().loadConfigFile("../config.json");
 
   drogon::app().run();
-  LOG_INFO << "server is running";
+  LOG_INFO << "server is running!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
   return 0;
 }

@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # База данных PostgreSQL
+  db:
+    image: postgres:17-alpine
+    container_name: drogon_db
+    restart: always
+    environment:
+      POSTGRES_USER: defect
+      POSTGRES_PASSWORD: Qwe741741qwe
+      POSTGRES_DB: notes_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - backend_net
+    # Healthcheck: проверяем, что PostgreSQL готов принимать подключения
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U defect -d notes_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Твое C++20 Drogon приложение
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: drogon_app
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy  # Ждем, пока БД будет ЗДОРОВА
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=notes_db
+      - DB_USER=defect
+      - DB_PASSWORD=Qwe741741qwe
+    networks:
+      - backend_net
+  
+    # Сервис для запуска тестов
+  tests:
+    image: python:3.11-slim # Легкий образ с питоном
+    volumes:
+      - .:/app              # Монтируем всю папку проекта внутрь контейнера
+    working_dir: /app       # Рабочая папка внутри контейнера
+    # Команда: ставим библиотеки и запускаем pytest
+    command: >
+      bash -c "pip install --no-cache-dir pytest psycopg2-binary requests &&
+      sleep 3 && 
+      pytest tests/test_general.py -v"
+    depends_on:
+      - app                 # Ждем, пока поднимется бэкенд
+      - db                  # Ждем, пока поднимется база
+    environment:
+      # Передаем настройки ВНУТРЬ контейнера с тестами
+      - DB_HOST=db          # Имя сервиса базы в docker-compose
+      - DB_PORT=5432        # Внутренний порт докер-сети
+      - DB_NAME=notes_db
+      - DB_USER=defect
+      - DB_PASSWORD=Qwe741741qwe
+      # Если будешь тестировать API через requests, пригодится URL бэкенда
+      - BACKEND_URL=http://app:8080 
+    networks:
+      - backend_net         # Подключаем к той же сети, что и базу/бэкенд
+
+volumes:
+  pgdata:
+
+networks:
+  backend_net:
+    driver: bridge

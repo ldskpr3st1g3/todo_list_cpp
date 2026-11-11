@@ -22,10 +22,8 @@ bool RoleChecker(std::string&& role, std::initializer_list<std::string> roles) {
 auto NoteController::createNewNote(const drogon::HttpRequestPtr request)
     -> drogon::Task<drogon::HttpResponsePtr> {
   auto json_ptr = request->getJsonObject();
-  if (!json_ptr)
-    co_return ResponseBuilder::createError("No json provided");
   std::vector<std::string> errors =
-      JsonValidate::validateJson(*json_ptr, JsonValidate::required<std::string>("title"),
+      JsonValidate::validateJson(json_ptr, JsonValidate::required<std::string>("title"),
                                  JsonValidate::optional<std::string>("content"));
   if (!errors.empty()) {
     co_return ResponseBuilder::createError("Invalid json", drogon::k400BadRequest,
@@ -161,10 +159,8 @@ auto NoteController::editNoteById(const drogon::HttpRequestPtr request, int32_t 
   if (!RoleChecker(std::move(user_role), {"editor", "owner"}))
     co_return ResponseBuilder::createError("Access denied", drogon::HttpStatusCode::k403Forbidden);
   auto json_ptr = request->getJsonObject();
-  if (!json_ptr)
-    co_return ResponseBuilder::createError("No json provided");
   auto errors =
-      JsonValidate::validateJson(*json_ptr, JsonValidate::optionalNotEmpty<std::string>("title"),
+      JsonValidate::validateJson(json_ptr, JsonValidate::optionalNotEmpty<std::string>("title"),
                                  JsonValidate::optional<std::string>("content"));
   if (!errors.empty())
     co_return ResponseBuilder::createError("Invalid json", drogon::HttpStatusCode::k400BadRequest,
@@ -204,9 +200,7 @@ auto NoteController::addRoleByUserId(const drogon::HttpRequestPtr request, int32
     co_return ResponseBuilder::createError("Access denied", drogon::HttpStatusCode::k403Forbidden);
 
   auto json_ptr = request->getJsonObject();
-  if (!json_ptr)
-    co_return ResponseBuilder::createError("No json provided");
-  auto errors = JsonValidate::validateJson(*json_ptr, JsonValidate::required<std::string>("login"),
+  auto errors = JsonValidate::validateJson(json_ptr, JsonValidate::required<std::string>("login"),
                                            JsonValidate::required<std::string>("role"));
   if (!errors.empty())
     co_return ResponseBuilder::createError("Invalid json", drogon::HttpStatusCode::k400BadRequest,
