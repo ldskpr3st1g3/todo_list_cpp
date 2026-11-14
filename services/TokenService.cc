@@ -56,14 +56,14 @@ auto TokenService::generateTokens(int32_t pk) -> drogon::Task<std::optional<Json
   try {
     generateAccessTokenString(access_token, pk);
   } catch (...) {
-    throw;
+    co_return std::nullopt;
   }
   auto refresh_token = getRefreshString(pk);
   auto refresh_token_string = refresh_token.getValueOfToken();
   try {
     co_await insertRefreshToken(std::move(refresh_token));
   } catch (...) {
-    throw;
+    co_return std::nullopt;
   }
   Json::Value json;
   json["access_token"] = access_token;
