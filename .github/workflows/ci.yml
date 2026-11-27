@@ -1,0 +1,48 @@
+name: CI Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate tests/test_config.json
+        run: |
+          cat << 'EOF' > tests/test_config.json
+          {
+            "database": {
+              "dbname": "notes_db",
+              "user": "defect",
+              "password": "Qwe741741qwe",
+              "host": "db",
+              "port": "5432"
+            },
+            "server": {
+              "host": "http://app",
+              "port": "8080"
+            },
+            "tests": {
+              "user_login": "test_user",
+              "user_email": "test@example.com",
+              "user_password": "test_password",
+              "user2_login": "test_user2",
+              "user2_email": "test2@example.com",
+              "user2_password": "test_password2"
+            }
+          }
+          EOF
+
+      - name: Build and run tests
+        run: docker compose up --build --abort-on-container-exit --exit-code-from tests
+
+      - name: Clean up containers
+        if: always()
+        run: docker compose down -v
