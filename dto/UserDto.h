@@ -14,7 +14,8 @@ private:
   std::optional<std::string> username_;
 
 public:
-  auto toJson() -> Json::Value;
+  auto toJson() const & -> Json::Value;
+  auto toJson() && -> Json::Value;
   explicit UserDto(std::shared_ptr<Json::Value> json);
-  explicit UserDto(const drogon_model::notes_db::Users& user);
+  explicit UserDto(const drogon_model::notes_db::Users &user);
 };

@@ -2,7 +2,7 @@
 #include "Users.h"
 #include <json/value.h>
 
-auto UserDto::toJson() -> Json::Value {
+auto UserDto::toJson() const & -> Json::Value {
   Json::Value json;
   json["email"] = email_;
   json["login"] = login_;
@@ -17,7 +17,21 @@ auto UserDto::toJson() -> Json::Value {
   return json;
 }
 
-UserDto::UserDto(const drogon_model::notes_db::Users& user)
+auto UserDto::toJson() && -> Json::Value {
+  Json::Value json;
+  json["email"] = std::move(email_);
+  json["login"] = std::move(login_);
+  json["id"] = std::move(id_);
+  if (phone_)
+    json["phone"] = std::move(*phone_);
+  if (age_)
+    json["age"] = std::move(*age_);
+  if (username_)
+    json["username"] = std::move(*username_);
+  return json;
+}
+
+UserDto::UserDto(const drogon_model::notes_db::Users &user)
     : login_(user.getValueOfLogin()), email_(user.getValueOfEmail()) {
   if (user.getUsername())
     username_ = user.getValueOfUsername();
@@ -30,7 +44,7 @@ UserDto::UserDto(const drogon_model::notes_db::Users& user)
 }
 
 UserDto::UserDto(std::shared_ptr<Json::Value> json) {
-  auto& j = *json;
+  auto &j = *json;
   if (j.isMember("id") && j["is"].isInt())
     id_ = j["id"].asInt();
   if (j.isMember("email") && j["email"].isString())
