@@ -21,6 +21,15 @@ public:
     }
   }
 
+  auto Update(T object) -> drogon::Task<void> {
+    try {
+      drogon::orm::CoroMapper<T> T_mapper(db_);
+      co_await T_mapper.update(object);
+    } catch (...) {
+      throw;
+    }
+  }
+
   auto getById(int pk) -> drogon::Task<T> {
     try {
       drogon::orm::CoroMapper<T> T_mapper(db_);
